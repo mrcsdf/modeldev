@@ -8,10 +8,7 @@ RUN apt-get update && apt-get install -y \
 
 # Create a non-root user
 RUN useradd -m vscode && echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/vscode
-# ...existing code...
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
-# ...existing code...
+
 # Set work directory
 WORKDIR /workspace
 
@@ -23,4 +20,4 @@ USER vscode
 
 # Install Python packages
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip && pip install -U -r requirements.txt
