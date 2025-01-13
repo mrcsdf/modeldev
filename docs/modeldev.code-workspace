@@ -1,0 +1,67 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		}
+	],
+	"extensions": {
+		"recommendations": [
+			"ms-python.python",
+			"ms-python.debugpy",
+			"ms-python.isort",
+			"ms-python.black-formatter",
+			"ms-python.linter-bandit"
+		]
+	},
+	"settings": {
+		"[python]": {
+			"diffEditor.ignoreTrimWhitespace": false,
+			"editor.defaultColorDecorators": "never",
+			"editor.formatOnType": true,
+			"editor.formatOnSave": true,
+			"editor.wordBasedSuggestions": "off"
+		},
+		"python.analysis.fixAll": [
+			"source.unusedImports",
+			"source.convertImportFormat"
+		],
+		"python.envFile": "${workspaceFolder}/.env",
+		"python.testing.pytestEnabled": true,
+		"python.poetryPath": "poetry",
+		"python.analysis.languageServerMode": "full",
+		"python.analysis.typeCheckingMode": "standard",
+		"editor.formatOnSave": true,
+	
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"name": "Python: Current File",
+				"type": "debugpy",
+				"request": "launch",
+				"program": "${file}",
+				"console": "integratedTerminal"
+			}
+		],
+		"compounds": []
+	},
+	"tasks": {
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "My Task",
+				"command": "echo hello",
+				"type": "shell",
+				"args": [],
+				"problemMatcher": [
+					"$tsc"
+				],
+				"presentation": {
+					"reveal": "always"
+				},
+				"group": "build"
+			}
+		]
+	}
+}

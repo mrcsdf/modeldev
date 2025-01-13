@@ -200,6 +200,7 @@ __pycache__/
 *.so
 *.ipynb_checkpoints
 # Virtual environments
+.venv/
 venv/
 env/
 # Jupyter Notebook

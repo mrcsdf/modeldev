@@ -1,23 +1,23 @@
-FROM python:3.12
+# Use the official Python 3.9 image
+FROM python:3.9-slim
 
-# Install dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
+    build-essential \
     git \
-    sudo \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
-RUN useradd -m vscode && echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/vscode
-
-# Set work directory
-WORKDIR /workspace
-
-# Change ownership to the non-root user
-RUN chown -R vscode:vscode /workspace
-
-# Switch to the non-root user
+RUN useradd -ms /bin/bash vscode
 USER vscode
 
-# Install Python packages
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -U -r requirements.txt
+# Set the working directory
+WORKDIR /workspace
+
+# Install Python dependencies
+COPY requirements.txt /workspace/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Expose the container
+CMD [ "bash" ]
