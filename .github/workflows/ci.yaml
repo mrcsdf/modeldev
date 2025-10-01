@@ -1,0 +1,84 @@
+name: CI + LLM Review
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  PYTHONUNBUFFERED: "1"
+  FORCE_COLOR: "1"
+
+jobs:
+  checks:
+    name: Code Quality Checks
+    runs-on: [self-hosted, linux]  # Use local runner with direct LLM access
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install tools
+        run: |
+          pip install pre-commit black flake8 bandit pytest
+      - name: Run checks
+        run: |
+          if [ -f ".pre-commit-config.yaml" ]; then
+            pre-commit run --all-files
+          else
+            black --check . || true
+            flake8 . || true
+            bandit -r . || true
+          fi
+
+  llm-review:
+    name: LLM Code Review
+    runs-on: [self-hosted, linux]  # Local runner can access localhost:1234
+    needs: [checks]
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Collect context
+        run: |
+          echo "## Changes" > ctx.txt
+          git diff origin/main...HEAD >> ctx.txt
+      - name: Run LLM review
+        env:
+          OPENAI_BASE_URL: ${{ secrets.LLM_BASE_URL || 'http://localhost:1234/v1' }}
+          OPENAI_API_KEY: ${{ secrets.LLM_API_KEY || 'lm-studio' }}
+        run: |
+          python -c "
+          import os, json, urllib.request
+          with open('ctx.txt') as f: ctx = f.read()
+          if not os.getenv('OPENAI_API_KEY'): exit(0)
+          req = urllib.request.Request(
+            os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1') + '/chat/completions',
+            json.dumps({
+              'model': 'gpt-4',
+              'messages': [{'role': 'user', 'content': f'Review this code: {ctx}'}],
+              'max_tokens': 1000
+            }).encode(),
+            {'Content-Type': 'application/json', 'Authorization': f'Bearer {os.getenv(\"OPENAI_API_KEY\")}'}
+          )
+          try:
+            with urllib.request.urlopen(req) as res:
+              result = json.loads(res.read())
+              with open('review.md', 'w') as f:
+                f.write(f'# LLM Review\n\n{result[\"choices\"][0][\"message\"][\"content\"]}')
+          except: pass
+          "
+      - name: Comment on PR
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          filePath: review.md
+          comment_tag: llm-review
+        if: hashFiles('review.md') != ''

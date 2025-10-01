@@ -230,3 +230,6 @@ checkpoint
 # Model files
 *.onnx
 *.tflite
+
+
+runner-data/

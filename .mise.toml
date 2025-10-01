@@ -1,0 +1,306 @@
+[tools]# Mise Configuration for Global Development Environment[tools]
+
+python = "3.12"
+
+node = "lts"# Tool version management# Python version management
+
+terraform = "1.9.7"
+
+python = "3.12"
+
+[settings]
+
+auto_install = true[tools]
+
+python_compile = false
+
+jobs = 4# Core development languages# Node.js for any JavaScript tooling
+
+
+
+[env]python = "3.12"node = "lts"
+
+PYTHONUNBUFFERED = "1"
+
+FORCE_COLOR = "1"node = "lts"
+
+PIP_DISABLE_PIP_VERSION_CHECK = "1"
+
+PYTHONDONTWRITEBYTECODE = "1"terraform = "1.9.7"# Terraform for infrastructure as code
+
+PYTHONHASHSEED = "random"
+
+PYTHONPATH = "src"terraform = "1.9.7"
+
+
+
+[aliases]# Optional tools (uncomment as needed)
+
+py = "python"
+
+tf = "terraform"# go = "latest"# Optional tools (uncomment as needed for specific projects)
+
+
+
+[tasks.install]# rust = "latest"# golang = "1.22"
+
+description = "Install all project dependencies"
+
+run = [# java = "openjdk-21"# deno = "latest"
+
+    "python -m pip install --upgrade pip",
+
+    "pip install -e .",# kubectl = "latest"# poetry = "latest"
+
+    "pip install -r requirements.txt",
+
+    "pre-commit install"# docker = "latest"# rust = "1.75"
+
+]
+
+
+
+[tasks.test]
+
+description = "Run all tests"# Global settings[settings]
+
+run = "pytest -v --cov"
+
+[settings]# Enable experimental features for better tool management
+
+[tasks.lint]
+
+description = "Run all linting and formatting checks"# Auto-install tools when entering directoriesexperimental = true
+
+run = [
+
+    "black --check .",auto_install = true
+
+    "isort --check-only .",
+
+    "flake8 ."# Trust configuration paths for automatic tool installation
+
+]
+
+# Use system python for global tools when possibletrusted_config_paths = [
+
+[tasks.format]
+
+description = "Format code with black and isort"python_compile = false    "~/.config/mise",
+
+run = [
+
+    "black .",    "$HOME/.config/mise"
+
+    "isort ."
+
+]# Performance settings]
+
+
+
+[tasks.clean]jobs = 4
+
+description = "Clean build artifacts and cache"
+
+run = [# Automatically install missing tools when entering directories
+
+    "rm -rf build/ dist/ *.egg-info/",
+
+    "find . -type d -name __pycache__ -delete",[env]auto_install = true
+
+    "find . -type f -name '*.pyc' -delete"
+
+]# Development environment variables
+
+
+
+[tasks.precommit]PYTHONUNBUFFERED = "1"# Use system python for global tools when possible
+
+description = "Run pre-commit on all files"
+
+run = "pre-commit run --all-files"FORCE_COLOR = "1"python_compile = false
+
+PIP_DISABLE_PIP_VERSION_CHECK = "1"
+
+# Performance settings
+
+# Python development settingsjobs = 4
+
+PYTHONDONTWRITEBYTECODE = "1"
+
+PYTHONHASHSEED = "random"[env]
+
+# Development environment variables
+
+# Set default Python path behaviorPYTHONUNBUFFERED = "1"
+
+PYTHONPATH = "src"FORCE_COLOR = "1"
+
+PIP_DISABLE_PIP_VERSION_CHECK = "1"
+
+[aliases]
+
+# Tool aliases for convenience# Python development settings
+
+py = "python"PYTHONDONTWRITEBYTECODE = "1"
+
+tf = "terraform"PYTHONHASHSEED = "random"
+
+tg = "terragrunt"
+
+k = "kubectl"# Set default Python path behavior
+
+PYTHONPATH = "src"
+
+# Task aliases (can be used with `mise run <alias>`)
+
+[tasks.install][plugins]
+
+description = "Install all project dependencies"# Plugin configuration for specific tools
+
+run = [# python = { repository = "https://github.com/mise-plugins/mise-python" }
+
+    "python -m pip install --upgrade pip",# node = { repository = "https://github.com/mise-plugins/mise-node" }
+
+    "pip install -e .",
+
+    "pip install -r requirements.txt",[aliases]
+
+    "pre-commit install"# Tool aliases for convenience
+
+]py = "python"
+
+tf = "terraform"
+
+[tasks.test]tg = "terragrunt"
+
+description = "Run all tests"k = "kubectl"
+
+run = "pytest -v --cov"
+
+# Task aliases (can be used with `mise run <alias>`)
+
+[tasks.lint][tasks.install]
+
+description = "Run all linting and formatting checks"description = "Install all project dependencies"
+
+run = [run = [
+
+    "black --check .",    "python -m pip install --upgrade pip",
+
+    "isort --check-only .",    "pip install -e .",
+
+    "flake8 .",    "pip install -r requirements.txt",
+
+    "mypy src"    "pre-commit install"
+
+]]
+
+
+
+[tasks.format][tasks.test]
+
+description = "Format code with black and isort"description = "Run all tests"
+
+run = [run = "pytest -v --cov"
+
+    "black .",
+
+    "isort ."[tasks.lint]
+
+]description = "Run all linting and formatting checks"
+
+run = [
+
+[tasks.build]    "black --check .",
+
+description = "Build the project"    "isort --check-only .",
+
+run = "python -m build"    "flake8 .",
+
+    "mypy .",
+
+[tasks.clean]    "bandit -r src"
+
+description = "Clean build artifacts and cache"]
+
+run = [
+
+    "rm -rf build/ dist/ *.egg-info/",[tasks.format]
+
+    "find . -type d -name __pycache__ -delete",description = "Format all code"
+
+    "find . -type f -name '*.pyc' -delete"run = [
+
+]    "black .",
+
+    "isort .",
+
+[tasks.dev]    "terraform fmt -recursive"
+
+description = "Start development server"]
+
+run = "python -m uvicorn main:app --reload"
+
+[tasks.security]
+
+[tasks.docs]description = "Run security scans"
+
+description = "Generate documentation"run = [
+
+run = "mkdocs serve"    "bandit -r src",
+
+    "detect-secrets scan --all-files"
+
+[tasks.security]]
+
+description = "Run security checks"
+
+run = [[tasks.docs]
+
+    "bandit -r src/",description = "Generate documentation"
+
+    "safety check"run = [
+
+]    "python -m mkdocs build",
+
+    "python -m mkdocs serve"
+
+[tasks.ci]]
+
+description = "Run full CI pipeline locally"
+
+run = [[tasks.clean]
+
+    "mise run lint",description = "Clean build artifacts and caches"
+
+    "mise run test", run = [
+
+    "mise run security"    "rm -rf build/ dist/ *.egg-info/",
+
+]    "find . -type d -name __pycache__ -delete",
+
+    "find . -type f -name '*.pyc' -delete",
+
+[tasks.requirements]    "find . -type d -name .pytest_cache -delete",
+
+description = "Update requirements.txt from pyproject.toml"    "find . -type d -name .mypy_cache -delete"
+
+run = "pip-compile pyproject.toml"]
+
+
+
+[tasks.precommit]# Environment-specific configurations
+
+description = "Run pre-commit on all files"[env.development]
+
+run = "pre-commit run --all-files"DEBUG = "1"
+LOG_LEVEL = "DEBUG"
+
+[env.test]
+TESTING = "1"
+LOG_LEVEL = "INFO"
+
+[env.production]
+LOG_LEVEL = "WARNING"
+PYTHONOPTIMIZE = "2"

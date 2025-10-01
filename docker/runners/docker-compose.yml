@@ -1,0 +1,82 @@
+services:
+  github-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.simple
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Docker-in-Docker support
+      - ./runner-data:/home/runner/_work # Persistent workspace
+      # GitHub CLI authentication (optional - remove if not using gh cli)
+      - ${USERPROFILE}/.config/gh:/home/runner/.config/gh:ro # Windows
+      # - ~/.config/gh:/home/runner/.config/gh:ro # Linux/Mac alternative
+    environment:
+      - REPO_URL=${REPO_URL}
+      - REGISTRATION_TOKEN=${GITHUB_TOKEN:-} # Optional if using GitHub CLI
+      - RUNNER_NAME=${RUNNER_NAME:-github-runner}
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,docker,self-hosted}
+      - RUNNER_GROUP=${RUNNER_GROUP:-default}
+    restart: unless-stopped
+    network_mode: host # Required for localhost:1234 LLM access
+    security_opt:
+      - seccomp:unconfined # Required for some development tools
+    tmpfs:
+      - /tmp:noexec,nosuid,size=2g
+    cap_add:
+      - SYS_PTRACE # Required for debugging tools
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "Runner.Listener"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Optional: Scale with multiple runners
+  github-runner-2:
+    extends: github-runner
+    environment:
+      - REPO_URL=${REPO_URL}
+      - REGISTRATION_TOKEN=${GITHUB_TOKEN}
+      - RUNNER_NAME=${RUNNER_NAME:-github-runner-2}
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,docker,self-hosted,worker-2}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./runner-2-data:/home/runner/_work
+      - ../bin:/usr/local/bin/devtools:ro
+    profiles:
+      - multi-runner
+
+  # Monitoring service
+  runner-monitor:
+    image: prom/node-exporter:latest
+    container_name: runner-monitor
+    command:
+      - "--path.rootfs=/host"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    restart: unless-stopped
+    volumes:
+      - "/:/host:ro,rslave"
+    ports:
+      - "9100:9100"
+    profiles:
+      - monitoring
+
+volumes:
+  runner-data:
+    driver: local
+  runner-2-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./runner-2-data
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
