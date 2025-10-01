@@ -18,12 +18,15 @@ jobs:
       - name: Test LM Studio Health
         run: |
           echo "🔍 Testing LM Studio connectivity..."
-          curl -s http://localhost:1234/v1/models >/dev/null && echo "✅ LM Studio accessible via models API" || echo "❌ LM Studio not accessible"
+          echo "Testing localhost:1234..."
+          curl -s http://localhost:1234/v1/models >/dev/null && echo "✅ localhost accessible" || echo "❌ localhost failed"
+          echo "Testing host.docker.internal:1234..."  
+          curl -s http://host.docker.internal:1234/v1/models >/dev/null && echo "✅ host.docker.internal accessible" || echo "❌ host.docker.internal failed"
 
       - name: Test LM Studio Models API
         run: |
           echo "🔍 Testing models endpoint..."
-          curl -s http://localhost:1234/v1/models | jq '.' || echo "❌ Models endpoint failed or no jq available"
+          curl -s http://host.docker.internal:1234/v1/models | jq '.' || echo "❌ Models endpoint failed or no jq available"
 
       - name: Run Full LM Studio Test
         run: |
@@ -33,7 +36,7 @@ jobs:
       - name: Test Chat Completion
         run: |
           echo "💬 Testing chat completion..."
-          curl -s -X POST http://localhost:1234/v1/chat/completions \
+          curl -s -X POST http://host.docker.internal:1234/v1/chat/completions \
             -H "Content-Type: application/json" \
             -d '{
               "messages": [

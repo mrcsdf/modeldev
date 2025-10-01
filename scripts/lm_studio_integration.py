@@ -15,7 +15,18 @@ import requests
 class LMStudioClient:
     """Client for interacting with LM Studio local server."""
     
-    def __init__(self, base_url: str = "http://localhost:1234"):
+    def __init__(self, base_url: str = None):
+        # Auto-detect if we're in a container and use appropriate endpoint
+        if base_url is None:
+            if os.path.exists('/.dockerenv'):
+                # Running in Docker container, use host.docker.internal
+                base_url = "http://host.docker.internal:1234"
+                print(f"🐳 Detected Docker environment, using: {base_url}")
+            else:
+                # Running on host, use localhost
+                base_url = "http://localhost:1234"
+                print(f"🏠 Detected host environment, using: {base_url}")
+        
         self.base_url = base_url.rstrip('/')
         self.session = requests.Session()
         self.session.timeout = 30
@@ -75,7 +86,7 @@ def test_connectivity():
     # Test health check
     print("📡 Checking LM Studio connectivity...")
     if not client.health_check():
-        print("❌ LM Studio is not accessible at localhost:1234")
+        print(f"❌ LM Studio is not accessible at {client.base_url}")
         print("💡 Make sure LM Studio is running with local server enabled")
         return False
     
