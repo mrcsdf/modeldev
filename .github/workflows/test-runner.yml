@@ -1,0 +1,26 @@
+name: Test Self-Hosted Runner
+on:
+  workflow_dispatch: # Manual trigger for testing
+
+jobs:
+  test:
+    runs-on: [self-hosted, llm]
+    steps:
+      - name: Test runner environment
+        run: |
+          echo "🎉 Self-hosted runner is working!"
+          echo "Runner: $(hostname)"
+          echo "OS: $(uname -a)"
+          python3 --version
+          node --version
+          docker --version
+          
+      - name: Test LM Studio connectivity  
+        run: |
+          echo "Testing LM Studio connection..."
+          curl -s http://localhost:1234/health || echo "LM Studio not running (expected if not started)"
+          
+      - name: Test development tools
+        run: |
+          echo "Development tools check:"
+          which python3 pip npm node tsc eslint prettier
