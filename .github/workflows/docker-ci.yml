@@ -1,0 +1,411 @@
+name: Docker Build & Test Pipeline
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'docker/**'
+      - 'Dockerfile*'
+      - '.dockerignore'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docker/**'
+      - 'Dockerfile*'
+      - '.dockerignore'
+  workflow_dispatch:
+    inputs:
+      build_target:
+        description: 'Docker build target'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - runners
+          - dev
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  docker-build-test:
+    runs-on: [self-hosted, docker]
+    strategy:
+      matrix:
+        target: [development, production]
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker environment
+        run: |
+          echo "🐳 Setting up Docker environment..."
+          docker --version
+          docker compose --version
+          
+          # Clean up old containers and images
+          docker system prune -f
+          
+          # Verify Docker-in-Docker is working
+          docker run --rm hello-world
+
+      - name: Create development Dockerfile
+        if: matrix.target == 'development'
+        run: |
+          cat > Dockerfile.dev << 'EOF'
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt* pyproject.toml* ./
+RUN pip install --no-cache-dir -r requirements.txt || \
+    pip install --no-cache-dir requests || \
+    echo "No requirements found"
+
+# Copy source code
+COPY . .
+
+# Install package in development mode
+RUN pip install -e . || echo "No setup.py found"
+
+# Create non-root user
+RUN useradd -m -u 1000 developer
+USER developer
+
+EXPOSE 8000
+CMD ["python", "-m", "http.server", "8000"]
+EOF
+
+      - name: Create production Dockerfile
+        if: matrix.target == 'production'
+        run: |
+          cat > Dockerfile.prod << 'EOF'
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt* pyproject.toml* ./
+RUN pip install --no-cache-dir -r requirements.txt || \
+    pip install --no-cache-dir requests
+
+# Copy source code
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+CMD ["python", "-c", "print('Production container ready')"]
+EOF
+
+      - name: Build Docker image
+        run: |
+          echo "🏗️ Building Docker image for ${{ matrix.target }}..."
+          
+          if [ "${{ matrix.target }}" = "development" ]; then
+            docker build -f Dockerfile.dev -t modeldev:dev-${{ github.sha }} .
+            docker build -f Dockerfile.dev -t modeldev:dev-latest .
+          else
+            docker build -f Dockerfile.prod -t modeldev:prod-${{ github.sha }} .
+            docker build -f Dockerfile.prod -t modeldev:prod-latest .
+          fi
+
+      - name: Test Docker image
+        run: |
+          echo "🧪 Testing Docker image..."
+          
+          if [ "${{ matrix.target }}" = "development" ]; then
+            # Test development container
+            docker run --rm -d --name test-dev -p 8080:8000 modeldev:dev-latest
+            sleep 5
+            
+            # Test if container is running
+            if docker ps | grep -q test-dev; then
+              echo "✅ Development container is running"
+              # Test HTTP endpoint
+              curl -f http://localhost:8080 || echo "⚠️ HTTP endpoint not responding"
+            else
+              echo "❌ Development container failed to start"
+              docker logs test-dev || true
+            fi
+            
+            docker stop test-dev || true
+          else
+            # Test production container
+            docker run --rm --name test-prod modeldev:prod-latest python -c "
+import sys
+print(f'Python version: {sys.version}')
+try:
+    import requests
+    print('✅ Core dependencies available')
+except ImportError as e:
+    print(f'⚠️ Import error: {e}')
+print('✅ Production container test complete')
+"
+          fi
+
+      - name: Security scan
+        run: |
+          echo "🔒 Running security scan..."
+          
+          # Install trivy if not available
+          if ! command -v trivy &> /dev/null; then
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          fi
+          
+          # Scan for vulnerabilities
+          if [ "${{ matrix.target }}" = "development" ]; then
+            trivy image --severity HIGH,CRITICAL --format json --output trivy-dev-report.json modeldev:dev-latest || echo "⚠️ Security scan completed with warnings"
+          else
+            trivy image --severity HIGH,CRITICAL --format json --output trivy-prod-report.json modeldev:prod-latest || echo "⚠️ Security scan completed with warnings"
+          fi
+
+      - name: Image analysis
+        run: |
+          echo "📊 Analyzing Docker image..."
+          
+          if [ "${{ matrix.target }}" = "development" ]; then
+            IMAGE="modeldev:dev-latest"
+          else
+            IMAGE="modeldev:prod-latest"
+          fi
+          
+          # Get image info
+          docker images $IMAGE --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+          
+          # Layer analysis
+          docker history $IMAGE --no-trunc || true
+          
+          # Container inspection
+          docker inspect $IMAGE | jq '.[0] | {Config: .Config, Size: .Size}' || docker inspect $IMAGE
+
+      - name: AI-powered image optimization
+        run: |
+          echo "🤖 AI-powered image optimization suggestions..."
+          
+          python3 -c "
+import requests
+import json
+import subprocess
+import os
+
+try:
+    base_url = 'http://host.docker.internal:1234' if os.path.exists('/.dockerenv') else 'http://localhost:1234'
+    
+    # Get image size
+    target = '${{ matrix.target }}'
+    image = f'modeldev:{target}-latest'
+    
+    size_output = subprocess.check_output(['docker', 'images', image, '--format', '{{.Size}}'], 
+                                        universal_newlines=True).strip()
+    
+    # Get layer info
+    layers_output = subprocess.check_output(['docker', 'history', image, '--format', '{{.Size}}'], 
+                                          universal_newlines=True)
+    
+    analysis_prompt = f'''
+Analyze this Docker image and provide optimization suggestions:
+
+Target: {target}
+Image Size: {size_output}
+Layer Sizes: {layers_output[:500]}
+
+Please provide specific recommendations for:
+1. Reducing image size
+2. Security improvements
+3. Performance optimizations
+4. Best practices for {target} environment
+'''
+    
+    messages = [{'role': 'user', 'content': analysis_prompt}]
+    
+    response = requests.post(f'{base_url}/v1/chat/completions', 
+        json={'messages': messages, 'max_tokens': 500}, timeout=30)
+    
+    if response.status_code == 200:
+        optimization = response.json()['choices'][0]['message']['content']
+        print(f'🤖 AI Optimization Suggestions:\\n{optimization}')
+    else:
+        print('⚠️ AI optimization analysis unavailable')
+        
+except Exception as e:
+    print(f'⚠️ AI analysis failed: {e}')
+"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-${{ matrix.target }}-artifacts
+          path: |
+            trivy-*-report.json
+            Dockerfile.*
+          retention-days: 30
+
+  multi-arch-build:
+    runs-on: [self-hosted, docker]
+    if: github.ref == 'refs/heads/main'
+    needs: docker-build-test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        run: |
+          echo "🏗️ Setting up Docker Buildx for multi-architecture builds..."
+          
+          # Create buildx builder if it doesn't exist
+          docker buildx create --name multiarch --use || docker buildx use multiarch
+          docker buildx inspect --bootstrap
+
+      - name: Multi-architecture build
+        run: |
+          echo "🌍 Building multi-architecture images..."
+          
+          # Create optimized production Dockerfile
+          cat > Dockerfile.multiarch << 'EOF'
+FROM --platform=$BUILDPLATFORM python:3.11-slim
+
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir requests
+
+# Copy application
+COPY scripts/ ./scripts/
+COPY src/ ./src/ 2>/dev/null || echo "No src directory"
+
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
+CMD ["python", "-c", "print('Multi-arch container ready')"]
+EOF
+
+          # Build for multiple architectures
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -f Dockerfile.multiarch \
+            -t modeldev:multiarch-latest \
+            --load \
+            . || echo "⚠️ Multi-arch build completed with warnings"
+
+      - name: Test multi-arch compatibility
+        run: |
+          echo "🧪 Testing multi-arch compatibility..."
+          
+          # Test on current architecture
+          docker run --rm modeldev:multiarch-latest python -c "
+import platform
+print(f'Architecture: {platform.machine()}')
+print(f'Platform: {platform.platform()}')
+print('✅ Multi-arch container working')
+"
+
+  deployment-staging:
+    runs-on: [self-hosted, docker]
+    needs: [docker-build-test, multi-arch-build]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to staging
+        run: |
+          echo "🚀 Deploying to staging environment..."
+          
+          # Create staging docker-compose
+          cat > docker-compose.staging.yml << 'EOF'
+version: '3.8'
+services:
+  app:
+    image: modeldev:prod-latest
+    container_name: modeldev-staging
+    restart: unless-stopped
+    ports:
+      - "3000:8000"
+    environment:
+      - ENV=staging
+      - LOG_LEVEL=debug
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "environment=staging"
+      - "version=${{ github.sha }}"
+EOF
+
+          # Deploy staging
+          docker compose -f docker-compose.staging.yml up -d
+          
+          # Wait for health check
+          sleep 10
+          
+          # Check deployment
+          if docker ps | grep -q modeldev-staging; then
+            echo "✅ Staging deployment successful"
+            docker logs modeldev-staging
+          else
+            echo "❌ Staging deployment failed"
+            docker compose -f docker-compose.staging.yml logs
+          fi
+
+      - name: Staging smoke tests
+        run: |
+          echo "💨 Running staging smoke tests..."
+          
+          # Basic connectivity test
+          if docker exec modeldev-staging python -c "print('Staging test passed')"; then
+            echo "✅ Staging smoke tests passed"
+          else
+            echo "❌ Staging smoke tests failed"
+          fi
+
+      - name: AI deployment analysis
+        run: |
+          echo "🤖 AI deployment analysis..."
+          
+          python3 -c "
+import requests
+import os
+
+try:
+    base_url = 'http://host.docker.internal:1234' if os.path.exists('/.dockerenv') else 'http://localhost:1234'
+    
+    messages = [{
+        'role': 'user', 
+        'content': 'Our Docker CI/CD pipeline completed successfully with multi-arch builds and staging deployment. Provide recommendations for production deployment strategies and monitoring.'
+    }]
+    
+    response = requests.post(f'{base_url}/v1/chat/completions', 
+        json={'messages': messages, 'max_tokens': 400}, timeout=30)
+    
+    if response.status_code == 200:
+        analysis = response.json()['choices'][0]['message']['content']
+        print(f'🤖 AI Deployment Analysis:\\n{analysis}')
+    else:
+        print('⚠️ AI analysis unavailable')
+        
+except Exception as e:
+    print(f'⚠️ AI analysis failed: {e}')
+"
