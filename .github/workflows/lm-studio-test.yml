@@ -1,0 +1,55 @@
+name: LM Studio Connection Test
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'  # Test every 6 hours
+
+jobs:
+  test-lm-studio:
+    runs-on: [self-hosted, llm]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --user requests
+
+      - name: Test LM Studio Health
+        run: |
+          echo "🔍 Testing LM Studio connectivity..."
+          curl -s http://localhost:1234/health && echo "✅ Health endpoint accessible" || echo "❌ Health endpoint failed"
+
+      - name: Test LM Studio Models API
+        run: |
+          echo "🔍 Testing models endpoint..."
+          curl -s http://localhost:1234/v1/models | jq '.' || echo "❌ Models endpoint failed or no jq available"
+
+      - name: Run Full LM Studio Test
+        run: |
+          echo "🤖 Running comprehensive LM Studio test..."
+          python3 scripts/lm_studio_integration.py test
+
+      - name: Test Chat Completion
+        run: |
+          echo "💬 Testing chat completion..."
+          curl -s -X POST http://localhost:1234/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -d '{
+              "messages": [
+                {"role": "user", "content": "Respond with just: GitHub Actions + LM Studio = Success"}
+              ],
+              "temperature": 0.1,
+              "max_tokens": 50
+            }' | jq -r '.choices[0].message.content' 2>/dev/null || echo "Direct API test failed"
+
+      - name: Environment Info
+        run: |
+          echo "📊 Environment Information:"
+          echo "Runner: $(hostname)"
+          echo "Python: $(python3 --version)"
+          echo "Network Test:"
+          ping -c 1 localhost || echo "Localhost ping failed"
+          
+          echo "Port Check:"
+          netstat -ln | grep :1234 || echo "Port 1234 not listening"

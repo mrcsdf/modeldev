@@ -1,0 +1,162 @@
+name: AI-Assisted Code Review
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      files:
+        description: 'Specific files to review (space-separated)'
+        required: false
+        default: ''
+
+jobs:
+  ai-code-review:
+    runs-on: [self-hosted, llm]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+
+      - name: Set up Python environment
+        run: |
+          python3 -m pip install --user requests
+
+      - name: Test LM Studio connectivity
+        id: lm-test
+        run: |
+          echo "🤖 Testing LM Studio connection..."
+          python3 scripts/lm_studio_integration.py test
+          if [ $? -eq 0 ]; then
+            echo "lm_studio_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "lm_studio_available=false" >> $GITHUB_OUTPUT
+            echo "⚠️ LM Studio not available, skipping AI review"
+          fi
+
+      - name: Get changed files
+        id: changed-files
+        if: steps.lm-test.outputs.lm_studio_available == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For PRs, get changed files
+            changed_files=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.sha }})
+          else
+            # For manual dispatch, use input or default to some Python files
+            if [ -n "${{ github.event.inputs.files }}" ]; then
+              changed_files="${{ github.event.inputs.files }}"
+            else
+              changed_files=$(find . -name "*.py" -not -path "./.git/*" -not -path "./.venv/*" | head -5)
+            fi
+          fi
+          
+          echo "Files to review:"
+          echo "$changed_files"
+          echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+          echo "$changed_files" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: AI Code Review
+        if: steps.lm-test.outputs.lm_studio_available == 'true' && steps.changed-files.outputs.changed_files != ''
+        run: |
+          echo "🤖 Starting AI-powered code review..."
+          
+          # Create review results directory
+          mkdir -p ai-review-results
+          
+          # Review each changed file
+          while IFS= read -r file; do
+            if [ -f "$file" ] && [[ "$file" == *.py || "$file" == *.js || "$file" == *.ts ]]; then
+              echo "📝 Reviewing: $file"
+              
+              # Perform code review
+              python3 scripts/lm_studio_integration.py review "$file" > "ai-review-results/review-$(basename "$file").md" 2>&1
+              
+              # Get improvement suggestions
+              python3 scripts/lm_studio_integration.py improve "$file" > "ai-review-results/improvements-$(basename "$file").md" 2>&1
+              
+              echo "✅ Review completed for $file"
+            fi
+          done <<< "${{ steps.changed-files.outputs.changed_files }}"
+
+      - name: Generate summary report
+        if: steps.lm-test.outputs.lm_studio_available == 'true'
+        run: |
+          echo "📊 Generating AI review summary..."
+          
+          cat > ai-review-results/summary.md << 'EOF'
+          # 🤖 AI-Assisted Code Review Summary
+          
+          **Review Date:** $(date)
+          **Commit:** ${{ github.sha }}
+          **Branch:** ${{ github.ref_name }}
+          
+          ## Files Reviewed
+          
+          EOF
+          
+          # Add reviewed files to summary
+          for file in ai-review-results/review-*.md; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file" | sed 's/review-//' | sed 's/\.md$//')
+              echo "- \`$filename\`" >> ai-review-results/summary.md
+            fi
+          done
+          
+          echo "" >> ai-review-results/summary.md
+          echo "## Review Details" >> ai-review-results/summary.md
+          echo "" >> ai-review-results/summary.md
+          echo "See individual review files for detailed analysis and suggestions." >> ai-review-results/summary.md
+
+      - name: Upload AI review results
+        if: steps.lm-test.outputs.lm_studio_available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-results
+          path: ai-review-results/
+          retention-days: 30
+
+      - name: Comment on PR (if PR)
+        if: github.event_name == 'pull_request' && steps.lm-test.outputs.lm_studio_available == 'true'
+        run: |
+          echo "🤖 AI Code Review completed! Results uploaded as artifacts."
+          echo ""
+          echo "📁 Review artifacts contain:"
+          echo "- Individual file reviews"
+          echo "- Improvement suggestions"
+          echo "- Summary report"
+          echo ""
+          echo "💡 LM Studio provided AI assistance for this review."
+
+      - name: Show results summary
+        if: steps.lm-test.outputs.lm_studio_available == 'true'
+        run: |
+          echo "🎉 AI-Assisted Code Review Complete!"
+          echo ""
+          echo "📊 Summary:"
+          if [ -f ai-review-results/summary.md ]; then
+            cat ai-review-results/summary.md
+          fi
+          echo ""
+          echo "💾 Detailed results saved as artifacts"
+
+  fallback-review:
+    runs-on: [self-hosted, llm]
+    if: failure()
+    steps:
+      - name: Fallback static analysis
+        run: |
+          echo "🔧 AI review failed, performing static analysis..."
+          
+          # Run basic linting if available
+          if command -v flake8 >/dev/null 2>&1; then
+            echo "Running flake8..."
+            flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || true
+          fi
+          
+          if command -v eslint >/dev/null 2>&1; then
+            echo "Running ESLint..."
+            find . -name "*.js" -o -name "*.ts" | head -10 | xargs eslint || true
+          fi
+          
+          echo "✅ Static analysis complete"
