@@ -23,7 +23,8 @@ class LMStudioClient:
     def health_check(self) -> bool:
         """Check if LM Studio is running and accessible."""
         try:
-            response = self.session.get(f"{self.base_url}/health")
+            # LM Studio doesn't have a /health endpoint, so we test the /v1/models endpoint
+            response = self.session.get(f"{self.base_url}/v1/models")
             return response.status_code == 200
         except requests.RequestException:
             return False
