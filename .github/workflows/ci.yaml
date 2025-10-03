@@ -23,13 +23,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
       - name: Install tools
         run: |
           pip install pre-commit black flake8 bandit pytest
       - name: Run checks
         run: |
           if [ -f ".pre-commit-config.yaml" ]; then
+            # Clear pre-commit cache to avoid stale environments (e.g. py_env-python3.12)
+            pre-commit clean || true
             pre-commit run --all-files
           else
             black --check . || true
